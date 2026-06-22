@@ -7,34 +7,6 @@ from game import SnakeGameAI
 
 HISTORY_FILE = './model/learning_history.json'
 
-def load_history():
-    """Загружает историю прошлых сессий из файла JSON"""
-    if os.path.exists(HISTORY_FILE):
-        try:
-            with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                # Возвращаем: список очков, список средних, разметки сессий, и общий номер игры
-                return (data.get('scores', []), 
-                        data.get('mean_scores', []), 
-                        data.get('session_marks', []), 
-                        data.get('total_games', 0))
-        except Exception as e:
-            print(f"Ошибка чтения истории: {e}. Начинаем с чистого листа.")
-    return [], [], [], 0
-
-def save_history(scores, mean_scores, session_marks, total_games):
-    """Сохраняет историю в файл JSON"""
-    if not os.path.exists('./model'):
-        os.makedirs('./model')
-    data = {
-        'scores': scores,
-        'mean_scores': mean_scores,
-        'session_marks': session_marks,
-        'total_games': total_games
-    }
-    with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
-
 def generate_final_report(current_session_games, record, total_scores, total_mean_scores, session_marks):
     """Генерирует продвинутый сквозной график со всеми сессиями и разметками"""
     if len(total_scores) == 0: 
@@ -48,6 +20,7 @@ def generate_final_report(current_session_games, record, total_scores, total_mea
     print(f"Абсолютный рекорд: {max(total_scores)} очков")
     print("-"*50)
     
+    # Создаем папку для отчетов, НАКОНЕЦТО ОНИ СОХРАНАЯЮТСЯ ИНЕ БУЖЕТ ОШБИКА ВЫЛЗЕАТЬ
     if not os.path.exists('./reports'):
         os.makedirs('./reports')
         
@@ -56,22 +29,20 @@ def generate_final_report(current_session_games, record, total_scores, total_mea
     plt.xlabel('Общий номер игры (Все сессии)')
     plt.ylabel('Набранные очки')
     
-    # Рисуем графики очков
+    # Строим графики текущих результатов и сглаженного среднего значения
     plt.plot(total_scores, label='Очки в игре', color='#0000FF', alpha=0.4)
     plt.plot(total_mean_scores, label='Среднее значение', color='#FF0000', linewidth=2)
     
-    # --- МАГИЯ РАЗМЕТКИ СЕССИЙ ---
-    # Рисуем вертикальные линии разделения сессий
+    # РАЗМЕТКА СЕССИЙ 
+    # Рисуем вертикальные линии разделения сессий чтобы мы видели прогресс(нет)и историю запусков
     session_num = 1
     for mark in session_marks:
-        # Вертикальная пунктирная линия серого цвета
         plt.axvline(x=mark, color='gray', linestyle='--', alpha=0.7)
-        # Добавляем подпись сверху графика
         plt.text(mark + 1, max(total_scores) * 0.9, f'Сессия {session_num}', 
                  fontsize=9, color='gray', rotation=90, verticalalignment='top')
         session_num += 1
         
-    # Размечаем текущую (последнюю) сессию
+    # Отдельно подписываем самую последнюю (текущую) сессию на графике
     if len(session_marks) > 0:
         last_mark = session_marks[-1]
         plt.text(last_mark + 1, max(total_scores) * 0.9, f'Сессия {session_num} (Текущая)', 
@@ -85,6 +56,7 @@ def generate_final_report(current_session_games, record, total_scores, total_mea
     plt.grid(True, linestyle=':', alpha=0.5)
     plt.legend()
     
+    # Сохраняем картинку с уникальным временным штампом чтобы не перезаписывать старые
     timestamp = int(time.time())
     report_img_path = f'./reports/global_report_{timestamp}.png'
     plt.savefig(report_img_path)
@@ -114,22 +86,21 @@ def start_ai_project():
     
     agent = Agent()
     
-    # --- ЗАГРУЗКА ИСТОРИИ ИЗ ПРОШЛЫХ СЕССИЙ ---
+    # Подтягиваем всю старую инфу из json  чтобы графики не обнулялись
     total_scores, total_mean_scores, session_marks, global_games_counter = load_history()
-    current_session_games = 0 # Счетчик конкретно для текущего запуска
+    current_session_games = 0 
     
     # Если мы зашли в тренировку и у нас уже БЫЛА история, ставим отметку старта новой сессии
     if mode == 'train' and global_games_counter > 0:
         session_marks.append(global_games_counter)
     
     if mode == 'vs':
-        agent.epsilon = 0 
+        agent.epsilon = 0 # В режиме дуэли полностью отключаем случайные шаги у ИИ, так винрейт мб вырастет у дуры этой
         
     game = SnakeGameAI(mode=mode)
     record = max(total_scores) if len(total_scores) > 0 else 0
     
-    # Считаем сумму очков для правильного скользящего среднего
-    # Чтобы среднее продолжалось корректно, берем старую сумму
+    # Чтобы среднее продолжалось корректно, берем сумму всех старых очков
     running_total_score = sum(total_scores)
 
     try:
@@ -137,6 +108,7 @@ def start_ai_project():
             state_old = agent.get_state(game)
             
             if mode == 'vs':
+                # Для режима игры вручную собираем решение на ходу через модель напрямую
                 import torch
                 state0 = torch.tensor(state_old, dtype=torch.float)
                 prediction = agent.model(state0)
@@ -150,6 +122,7 @@ def start_ai_project():
             state_new = agent.get_state(game)
 
             if mode == 'train':
+                # Закидываем этот шаг в краткосрочную и долгосрочную память агента
                 agent.train_short_memory(state_old, final_move, reward, state_new, done)
                 agent.remember(state_old, final_move, reward, state_new, done)
 
@@ -157,10 +130,11 @@ def start_ai_project():
                 game.reset()
                 
                 if mode == 'train':
-                    agent.n_games += 1         # Внутренний счетчик агента для Эпсилона
-                    current_session_games += 1 # Счетчик текущей сессии для отчета
-                    global_games_counter += 1  # Общий сквозной счетчик игр
+                    agent.n_games += 1         
+                    current_session_games += 1 
+                    global_games_counter += 1  
                     
+                    # Игра закончилась значит гоняем нейросеть по случайной пачке воспоминаний
                     agent.train_long_memory()
 
                     if score > record:
@@ -169,13 +143,13 @@ def start_ai_project():
 
                     print(f'Сессия! Игра № {current_session_games} (Всего: {global_games_counter}) | Очки: {score} | Рекорд: {record}')
                     
-                    # Записываем данные в глобальную историю
+                    # Математика сквозного скользящего среднего, чтобы линия на графике шла красиво, фу матиматика буэээ артем заучка
                     total_scores.append(score)
                     running_total_score += score
                     new_mean = running_total_score / global_games_counter
                     total_mean_scores.append(new_mean)
                     
-                    # Каждую игру сохраняем историю в файл (защита от внезапного вылета)
+                    # ЧТОБЫ ПРИ ВЫЛЕТЕ ОПЯТЬ ВСЕ НЕ СТЕРЛОСЬ Я НАГУГЛИЛ КАК МОЖНО ПОФИКСИТЬ
                     save_history(total_scores, total_mean_scores, session_marks, global_games_counter)
                 else:
                     print(f'Матч окончен! ИИ набрал: {score} очков. Перезапуск дуэли...')
@@ -185,7 +159,37 @@ def start_ai_project():
         pass
     finally:
         if mode == 'train':
+            # После закрытия проги сразу отчет вылезает и ниче не не надо нажимать ивсе такое
             generate_final_report(current_session_games, record, total_scores, total_mean_scores, session_marks)
+
+# json функции или типа того
+
+def load_history():
+    """Загружает историю прошлых сессий из файла JSON"""
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return (data.get('scores', []), 
+                        data.get('mean_scores', []), 
+                        data.get('session_marks', []), 
+                        data.get('total_games', 0))
+        except Exception as e:
+            print(f"Ошибка чтения истории: {e}. Начинаем с чистого листа.")
+    return [], [], [], 0
+
+def save_history(scores, mean_scores, session_marks, total_games):
+    """Сохраняет историю в файл JSON"""
+    if not os.path.exists('./model'):
+        os.makedirs('./model')
+    data = {
+        'scores': scores,
+        'mean_scores': mean_scores,
+        'session_marks': session_marks,
+        'total_games': total_games
+    }
+    with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
 
 if __name__ == '__main__':
     start_ai_project()
