@@ -43,7 +43,7 @@ class QTrainer:
         reward = torch.tensor(np.array(reward), dtype=torch.float)
 
         if len(state.shape) == 1:
-            # Корректировка размерности, если на вход пришел один шаг, а не пакет данных (batch)
+            # Корректировка размерности, если на вход пришел один шаг, а не пакет данных (батч)
             state = torch.unsqueeze(state, 0)
             next_state = torch.unsqueeze(next_state, 0)
             action = torch.unsqueeze(action, 0)
@@ -57,7 +57,7 @@ class QTrainer:
         for idx in range(len(done)):
             Q_new = reward[idx]
             if not done[idx]:
-                # Короче считает ценность по какой то там формуле из инета, сложная 0_0
+                # Короче считает ценность по формуле Беллмана
                 Q_new = reward[idx] + self.gamma * torch.max(self.model(next_state[idx]))
             target[idx][torch.argmax(action[idx]).item()] = Q_new
     

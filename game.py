@@ -18,7 +18,7 @@ BLACK = (0, 0, 0)
 GRAY = (50, 50, 50)
 
 BLOCK_SIZE = 20
-SPEED = 30 # СКОРОСТЬ МЕНЯТЬ ТУТ
+SPEED = 80 # СКОРОСТЬ МЕНЯТЬ ТУТ
 
 class SnakeGameAI:
     def __init__(self, mode='train'):
